@@ -6,10 +6,11 @@ var through = require('through2')
 var pump = require('pump')
 var nextTick = process.nextTick
 var EE = require('events').EventEmitter
-var Kafka = require("kafka-node");
-var msgpack = require("msgpack-lite")
+var Kafka = require('kafka-node')
+var msgpack = require('msgpack-lite')
+var async = require('async')
 
-function MQEmitterKafka(opts) {
+function MQEmitterKafka (opts) {
   if (!(this instanceof MQEmitterKafka)) {
     return new MQEmitterKafka(opts)
   }
@@ -20,30 +21,31 @@ function MQEmitterKafka(opts) {
 
   var that = this
 
-  this._producerClient = new Kafka.Client("localhost:2181", "mqemitter-producer")
+  this._producerClient = new Kafka.Client('localhost:2181', 'mqemitter-producer')
   this._producer = new Kafka.Producer(this._producerClient)
-  this._producer.once("ready", waitStartup)
+  this._producer.once('ready', waitStartup)
 
-  this._consumerClient = new Kafka.Client("localhost:2181", "mqemitter-consumer")
-  this._consumer = new Kafka.ConsumerStream(this._consumerClient, [{ topic: "mqemitter" }], { encoding: "buffer" })
+  this._consumerClient = new Kafka.Client('localhost:2181', 'mqemitter-consumer')
+  this._consumer = new Kafka.ConsumerStream(this._consumerClient, [{ topic: 'mqemitter' }], { encoding: 'buffer' })
 
   this._started = false
   this.status = new EE()
 
-  function waitStartup() {
-    that._producer.createTopics(["mqemitter"], false, function (err) {
-      if (err)
+  function waitStartup () {
+    that._producer.createTopics(['mqemitter'], false, function (err) {
+      if (err) {
         return that.status.emit('error', err)
+      }
 
-      start();
-    });
+      start()
+    })
   }
 
   var oldEmit = MQEmitter.prototype.emit
 
   this._waiting = {}
 
-  function start() {
+  function start () {
     pump(that._consumer, through.obj(process), function () {
       if (that.closed) {
         return
@@ -56,7 +58,7 @@ function MQEmitterKafka(opts) {
 
     that.status.emit('stream')
 
-    function process(obj, enc, cb) {
+    function process (obj, enc, cb) {
       if (that.closed) {
         return cb()
       }
@@ -92,15 +94,16 @@ MQEmitterKafka.prototype.emit = function (packet, cb) {
     }
   } else {
     this._producer.send([{
-      topic: "mqemitter",
+      topic: 'mqemitter',
       messages: [msgpack.encode(packet)],
       key: packet.topic
     }], function (err, data) {
       if (cb) {
-        if (err)
+        if (err) {
           return cb(err)
+        }
 
-        var id = data.mqemitter[0];
+        var id = data.mqemitter[0]
         if (id > that._lastId) {
           that._waiting[id] = cb
         } else {
@@ -125,7 +128,7 @@ MQEmitterKafka.prototype.close = function (cb) {
   MQEmitter.prototype.close.call(this, function () {
     async.series([
       function (callback) {
-        that._consumer.removeTopics(["mqemitter"], callback)
+        that._consumer.removeTopics(['mqemitter'], callback)
       },
       that._consumer.close,
       that._producer.close,
@@ -137,6 +140,6 @@ MQEmitterKafka.prototype.close = function (cb) {
   return this
 }
 
-function noop() { }
+function noop () { }
 
 module.exports = MQEmitterKafka

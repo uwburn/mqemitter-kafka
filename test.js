@@ -1,3 +1,4 @@
+/*
 'use strict'
 
 var mongodb = require('mongodb')
@@ -34,3 +35,4 @@ MongoClient.connect(url, { w: 1 }, function (err, client) {
     })
   })
 })
+*/

@@ -24,6 +24,7 @@
     "tape": "^4.9.0"
   },
   "dependencies": {
+    "async": "^2.6.1",
     "inherits": "^2.0.1",
     "kafka-node": "^2.6.1",
     "mqemitter": "^2.2.0",
