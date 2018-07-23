@@ -33,23 +33,35 @@ function MQEmitterKafka (opts) {
   var consumerReady = false
 
   this._producer = new Kafka.Producer({
-    'metadata.broker.list': 'localhost:9092'
+    'metadata.broker.list': 'localhost:9092',
+    'client.id': 'mqemitter-producer',
+    'debug': 'all'
   })
-  this._producer.once('ready', function () {
+  this._producer.on('ready', function () {
     producerReady = true
     waitStartup()
   })
 
-  this._consumer = Kafka.KafkaConsumer.createReadStream({
+  this._consumerStream = Kafka.createReadStream({
+    'metadata.broker.list': 'localhost:9092',
+    'client.id': 'mqemitter-consumer',
     'group.id': 'mqemitter',
-    'metadata.broker.list': 'localhost:9092'
+    'socket.keepalive.enable': true,
+    'debug': 'all'
   }, {}, {
-    topics: ['mqemitter']
+    topics: 'mqemitter',
+    waitInterval: 0,
+    objectMode: false
   })
-  this._consumer.once('ready', function () {
+
+  this._consumer = this._consumerStream.consumer
+  this._consumer.on('ready', function () {
     consumerReady = true
     waitStartup()
   })
+
+  this._producer.connect()
+  this._consumer.connect()
 
   function waitStartup () {
     if (!producerReady || !consumerReady) {
@@ -59,10 +71,10 @@ function MQEmitterKafka (opts) {
     start()
   }
 
-  this._waiting = {}
+  var oldEmit = MQEmitter.prototype.emit
 
   function start () {
-    pump(that._consumer, through.obj(process), function () {
+    pump(that._consumerStream, through.obj(process), function () {
       if (that.closed) {
         return
       }
@@ -82,7 +94,7 @@ function MQEmitterKafka (opts) {
       var packet = msgpack.decode(data)
 
       if (!that._cache.get(packet.id)) {
-        that._emit(packet.msg)
+        oldEmit.call(that, packet.msg, cb)
       }
       that._cache.set(packet.id, true)
     }
