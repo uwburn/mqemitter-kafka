@@ -4,11 +4,11 @@ var inherits = require('inherits')
 var MQEmitter = require('mqemitter')
 var through = require('through2')
 var pump = require('pump')
-var nextTick = process.nextTick
 var EE = require('events').EventEmitter
-var Kafka = require('kafka-node')
+var Kafka = require('node-rdkafka')
 var msgpack = require('msgpack-lite')
-var async = require('async')
+var LRU = require('lru-cache')
+var hyperid = require('hyperid')()
 
 function MQEmitterKafka (opts) {
   if (!(this instanceof MQEmitterKafka)) {
@@ -21,27 +21,43 @@ function MQEmitterKafka (opts) {
 
   var that = this
 
-  this._producerClient = new Kafka.Client('localhost:2181', 'mqemitter-producer')
-  this._producer = new Kafka.Producer(this._producerClient)
-  this._producer.once('ready', waitStartup)
-
-  this._consumerClient = new Kafka.Client('localhost:2181', 'mqemitter-consumer')
-  this._consumer = new Kafka.ConsumerStream(this._consumerClient, [{ topic: 'mqemitter' }], { encoding: 'buffer' })
+  this._cache = LRU({
+    max: 10000,
+    maxAge: 60 * 1000 // one minute
+  })
 
   this._started = false
   this.status = new EE()
 
+  var producerReady = false
+  var consumerReady = false
+
+  this._producer = new Kafka.Producer({
+    'metadata.broker.list': 'localhost:9092'
+  })
+  this._producer.once('ready', function () {
+    producerReady = true
+    waitStartup()
+  })
+
+  this._consumer = Kafka.KafkaConsumer.createReadStream({
+    'group.id': 'mqemitter',
+    'metadata.broker.list': 'localhost:9092'
+  }, {}, {
+    topics: ['mqemitter']
+  })
+  this._consumer.once('ready', function () {
+    consumerReady = true
+    waitStartup()
+  })
+
   function waitStartup () {
-    that._producer.createTopics(['mqemitter'], false, function (err) {
-      if (err) {
-        return that.status.emit('error', err)
-      }
+    if (!producerReady || !consumerReady) {
+      return
+    }
 
-      start()
-    })
+    start()
   }
-
-  var oldEmit = MQEmitter.prototype.emit
 
   this._waiting = {}
 
@@ -58,22 +74,17 @@ function MQEmitterKafka (opts) {
 
     that.status.emit('stream')
 
-    function process (obj, enc, cb) {
+    function process (data, enc, cb) {
       if (that.closed) {
         return cb()
       }
 
-      var packet = msgpack.decode(obj.value)
+      var packet = msgpack.decode(data)
 
-      that._started = true
-      that._lastId = obj._id
-      oldEmit.call(that, packet, cb)
-
-      var id = obj.offset
-      if (that._waiting[id]) {
-        nextTick(that._waiting[id])
-        delete that._waiting[id]
+      if (!that._cache.get(packet.id)) {
+        that._emit(packet.msg)
       }
+      that._cache.set(packet.id, true)
     }
   }
   MQEmitter.call(this, opts)
@@ -81,36 +92,32 @@ function MQEmitterKafka (opts) {
 
 inherits(MQEmitterKafka, MQEmitter)
 
-MQEmitterKafka.prototype.emit = function (packet, cb) {
-  var that = this
-  var err
-
+MQEmitterKafka.prototype.emit = function (msg, cb) {
   if (this.closed) {
-    err = new Error('MQEmitterKafka is closed')
+    var err = new Error('MQEmitterKafka is closed')
     if (cb) {
       cb(err)
     } else {
       throw err
     }
   } else {
-    this._producer.send([{
-      topic: 'mqemitter',
-      messages: [msgpack.encode(packet)],
-      key: packet.topic
-    }], function (err, data) {
-      if (cb) {
-        if (err) {
-          return cb(err)
-        }
+    var packet = {
+      id: hyperid(),
+      msg: msg
+    }
 
-        var id = data.mqemitter[0]
-        if (id > that._lastId) {
-          that._waiting[id] = cb
-        } else {
-          cb()
-        }
+    try {
+      this._producer.produce('mqemitter', -1, msgpack.encode(packet), packet.id)
+      if (cb) {
+        cb()
       }
-    })
+    } catch (err) {
+      if (cb) {
+        cb(err)
+      } else {
+        throw err
+      }
+    }
   }
   return this
 }
@@ -126,15 +133,28 @@ MQEmitterKafka.prototype.close = function (cb) {
 
   var that = this
   MQEmitter.prototype.close.call(this, function () {
-    async.series([
-      function (callback) {
-        that._consumer.removeTopics(['mqemitter'], callback)
-      },
-      that._consumer.close,
-      that._producer.close,
-      that._consumerClient.close,
-      that._producerClient.close
-    ], cb)
+    var consumerDisconnected = false
+    var producerDisconnected = false
+
+    that._producer.once('disconnected', function () {
+      producerDisconnected = true
+      waitClose()
+    })
+    that._producer.disconnect()
+
+    that._consumer.disconnect()
+    that._consumer.once('disconnected', function () {
+      consumerDisconnected = true
+      waitClose()
+    })
+
+    function waitClose () {
+      if (!consumerDisconnected || !producerDisconnected) {
+        return
+      }
+
+      cb()
+    }
   })
 
   return this
