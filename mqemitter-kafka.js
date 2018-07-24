@@ -1,5 +1,6 @@
 'use strict'
 
+var debug = require('debug')('mqemitter-kafka')
 var inherits = require('inherits')
 var MQEmitter = require('mqemitter')
 var through = require('through2')
@@ -29,51 +30,33 @@ function MQEmitterKafka (opts) {
   this._started = false
   this.status = new EE()
 
-  var producerReady = false
-  var consumerReady = false
-
-  this._producer = new Kafka.Producer({
+  debug('Opening write stream')
+  this._producerStream = Kafka.createWriteStream({
     'metadata.broker.list': 'localhost:9092',
-    'client.id': 'mqemitter-producer',
-    'debug': 'all'
-  })
-  this._producer.on('ready', function () {
-    producerReady = true
-    waitStartup()
+    'client.id': 'mqemitter-producer'
+  }, {}, {
+    topic: 'mqemitter'
   })
 
+  debug('Opening read stream')
   this._consumerStream = Kafka.createReadStream({
     'metadata.broker.list': 'localhost:9092',
     'client.id': 'mqemitter-consumer',
     'group.id': 'mqemitter',
-    'socket.keepalive.enable': true,
-    'debug': 'all'
+    'socket.keepalive.enable': true
   }, {}, {
     topics: 'mqemitter',
     waitInterval: 0,
     objectMode: false
   })
 
-  this._consumer = this._consumerStream.consumer
-  this._consumer.on('ready', function () {
-    consumerReady = true
-    waitStartup()
-  })
-
-  this._producer.connect()
-  this._consumer.connect()
-
-  function waitStartup () {
-    if (!producerReady || !consumerReady) {
-      return
-    }
-
-    start()
-  }
+  start()
 
   var oldEmit = MQEmitter.prototype.emit
 
   function start () {
+    that._started = true
+
     pump(that._consumerStream, through.obj(process), function () {
       if (that.closed) {
         return
@@ -93,7 +76,9 @@ function MQEmitterKafka (opts) {
 
       var packet = msgpack.decode(data)
 
+      // Deduplication
       if (!that._cache.get(packet.id)) {
+        debug('Relaying local emit of packet with id ' + packet.id)
         oldEmit.call(that, packet.msg, cb)
       }
       that._cache.set(packet.id, true)
@@ -119,7 +104,8 @@ MQEmitterKafka.prototype.emit = function (msg, cb) {
     }
 
     try {
-      this._producer.produce('mqemitter', -1, msgpack.encode(packet), packet.id)
+      debug('Emitting packet with id ' + packet.id)
+      this._producerStream.write(msgpack.encode(packet))
       if (cb) {
         cb()
       }
@@ -145,28 +131,10 @@ MQEmitterKafka.prototype.close = function (cb) {
 
   var that = this
   MQEmitter.prototype.close.call(this, function () {
-    var consumerDisconnected = false
-    var producerDisconnected = false
+    that._producerStream.destroy()
+    that._consumerStream.destroy()
 
-    that._producer.once('disconnected', function () {
-      producerDisconnected = true
-      waitClose()
-    })
-    that._producer.disconnect()
-
-    that._consumer.disconnect()
-    that._consumer.once('disconnected', function () {
-      consumerDisconnected = true
-      waitClose()
-    })
-
-    function waitClose () {
-      if (!consumerDisconnected || !producerDisconnected) {
-        return
-      }
-
-      cb()
-    }
+    cb()
   })
 
   return this
