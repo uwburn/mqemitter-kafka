@@ -45,10 +45,17 @@ function MQEmitterKafka (opts) {
   this._started = false
   this.status = new EE()
 
+  var presenceProducerReady = false
+  var presenceConsumerReady = false
+  var controlConsumerReady = false
+  var controlProducerReady = false
+  var messageConsumerReady = false
+
   debug('Opening presence write stream')
   this._producerBrokerStream = Kafka.createWriteStream({
     'metadata.broker.list': 'localhost:9092',
-    'client.id': 'mqemitter-presence-producer_' + this._opts.id
+    'client.id': 'mqemitter-presence-producer_' + this._opts.id,
+    'debug': 'all'
   }, {}, {
     topic: 'mqemitter-presence'
   })
@@ -57,7 +64,8 @@ function MQEmitterKafka (opts) {
     'metadata.broker.list': 'localhost:9092',
     'client.id': 'mqemitter-presence-consumer_' + this._opts.id,
     'group.id': 'mqemitter-presence-consumer_' + this._opts.id,
-    'socket.keepalive.enable': true
+    'socket.keepalive.enable': true,
+    'debug': 'all'
   }, {
     'auto.offset.reset': 'earliest'
   }, {
@@ -69,7 +77,8 @@ function MQEmitterKafka (opts) {
   debug('Opening control write stream')
   this._produceControlStream = Kafka.createWriteStream({
     'metadata.broker.list': 'localhost:9092',
-    'client.id': 'mqemitter-control-producer_' + this._opts.id
+    'client.id': 'mqemitter-control-producer_' + this._opts.id,
+    'debug': 'all'
   }, {}, {
     topic: 'mqemitter-control'
   })
@@ -78,11 +87,55 @@ function MQEmitterKafka (opts) {
     'metadata.broker.list': 'localhost:9092',
     'client.id': 'mqemitter-control-consumer_' + this._opts.id,
     'group.id': 'mqemitter-control-consumer_' + this._opts.id,
-    'socket.keepalive.enable': true
-  }, { }, {
+    'socket.keepalive.enable': true,
+    'debug': 'all'
+  }, {
+    'auto.offset.reset': 'earliest'
+   }, {
     topics: 'mqemitter-control',
     waitInterval: 0,
     objectMode: false
+  })
+
+  debug('Opening message read stream')
+  this._consumerMessageStream = Kafka.createReadStream({
+    'metadata.broker.list': 'localhost:9092',
+    'client.id': 'mqemitter-message-consumer_' + this._opts.id,
+    'group.id': 'mqemitter-message-consumer_' + this._opts.id,
+    'socket.keepalive.enable': true,
+    'debug': 'all'
+  }, {
+    'auto.offset.reset': 'earliest'
+  }, {
+    topics: 'mqemitter-message_' + this._opts.id,
+    waitInterval: 0,
+    objectMode: false
+  })
+
+  this._producerBrokerStream.producer.once('ready', function () {
+    debug('Presence producer stream ready')
+    presenceProducerReady = true
+    waitstart()
+  })
+  this._consumerBrokerStream.consumer.once('ready', function () {
+    debug('Presence consumer stream ready')
+    presenceConsumerReady = true
+    waitstart()
+  })
+  this._produceControlStream.producer.once('ready', function () {
+    debug('Control producer stream ready')
+    controlProducerReady = true
+    waitstart()
+  })
+  this._consumerControlStream.consumer.once('ready', function () {
+    debug('Control consumer stream ready')
+    controlConsumerReady = true
+    waitstart()
+  })
+  this._consumerMessageStream.consumer.once('ready', function () {
+    debug('Message consumer stream ready')
+    messageConsumerReady = true
+    waitstart()
   })
 
   this._emitKafka = function (msg) {
@@ -101,27 +154,14 @@ function MQEmitterKafka (opts) {
     }
   }
 
-  debug('Opening message read stream')
-  this._consumerMessageStream = Kafka.createReadStream({
-    'metadata.broker.list': 'localhost:9092',
-    'client.id': 'mqemitter-message-consumer_' + this._opts.id,
-    'group.id': 'mqemitter-message-consumer_' + this._opts.id,
-    'socket.keepalive.enable': true
-  }, {}, {
-    topics: 'mqemitter-message_' + this._opts.id,
-    waitInterval: 0,
-    objectMode: false
-  })
-
-  start()
-
   this._emit = MQEmitter.prototype.emit
   this._on = MQEmitter.prototype.on
   this._removeListener = MQEmitter.prototype.removeListener
 
   function heartbeat () {
+    var that = this
     this._producerBrokerStream.write(msgpack.encode({
-      id: this._id,
+      id: that._id,
       time: new Date().getTime()
     }))
   }
@@ -142,11 +182,55 @@ function MQEmitterKafka (opts) {
     return emitters[id]
   }
 
+  function waitstart() {
+    if (!presenceProducerReady) {
+      return
+    }
+
+    if (!presenceConsumerReady) {
+      return
+    }
+
+    if (!controlProducerReady) {
+      return
+    }
+
+    if (!controlConsumerReady) {
+      return
+    }
+
+    if (!messageConsumerReady) {
+      return
+    }
+
+    debug('Starting')
+    start()
+  }
+
   function start () {
     that._started = true
 
     heartbeat.bind(that)()
     that._heartbeatInterval = setInterval(heartbeat.bind(that), 10000)
+
+    pump(that._consumerBrokerStream, through.obj(processPresence), function () {
+      if (that.closed) {
+        return
+      }
+
+      if (that._started) {
+        that.status.emit('error', new Error('Error receiving data from Kafka'))
+      }
+    })
+
+    function processPresence (data, enc, cb) {
+      if (that.closed) {
+        return cb()
+      }
+
+      var packet = msgpack.decode(data)
+      cb()
+    }
 
     pump(that._consumerControlStream, through.obj(processControl), function () {
       if (that.closed) {
@@ -175,7 +259,11 @@ function MQEmitterKafka (opts) {
           debug('Removing emitter ' + packet.source + ' for topic ' + packet.topic)
           that._emitterMatcher.remove(packet.topic, packet.source)
           break
+        default:
+          debug('Unknown action')
       }
+
+      cb()
     }
 
     pump(that._consumerMessageStream, through.obj(processMessage), function () {
@@ -236,6 +324,7 @@ MQEmitterKafka.prototype.emit = function (msg, cb) {
 }
 
 MQEmitterKafka.prototype.on = function (topic, cb, done) {
+  debug('On ' + topic)
   this._produceControlStream.write(msgpack.encode({
     action: 'on',
     topic: topic,
