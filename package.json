@@ -1,12 +1,8 @@
 {
   "name": "mqemitter-kafka",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Kafka based MQEmitter",
   "main": "mqemitter-kafka.js",
-  "scripts": {
-    "test": "standard && tape test.js | faucet"
-  },
-  "pre-commit": "test",
   "repository": {
     "type": "git",
     "url": "https://github.com/uwburn/mqemitter-kafka.git"
@@ -14,22 +10,15 @@
   "author": "Michele Tibaldi <tiboburn@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=4.0.0"
+    "node": ">=10.13.0"
   },
   "devDependencies": {
-    "faucet": "0.0.1",
-    "mongo-clean": "^2.0.0",
-    "pre-commit": "^1.0.7",
-    "standard": "^11.0.0",
-    "tape": "^4.9.0"
+    "eslint": "^8.6.0"
   },
   "dependencies": {
-    "async": "^2.6.1",
-    "inherits": "^2.0.1",
-    "kafka-node": "^2.6.1",
-    "mqemitter": "^2.2.0",
-    "msgpack-lite": "^0.1.26",
-    "pump": "^3.0.0",
-    "through2": "^2.0.0"
+    "inherits": "^2.0.4",
+    "kafkajs": "^1.15.0",
+    "mqemitter": "^4.5.0",
+    "uuid": "^8.3.2"
   }
 }
