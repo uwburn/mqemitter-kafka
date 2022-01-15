@@ -21,20 +21,20 @@ yarn add mqemitter-kafka
 ## Example
 
 ```js
-const MqemitterKafka = require('mqemitter-mongodb');
+const MqemitterKafka = require("mqemitter-mongodb");
 
 const mq = MqemitterKafka({
   kafka: {
-    brokers: ['localhost:9092']
+    brokers: ["localhost:9092"]
   }
 });
 
 const msg  = {
-  topic: 'hello world',
-  payload: 'or any other fields'
+  topic: "hello world",
+  payload: "or any other fields"
 };
 
-mq.on('hello world', function (message, cb) {
+mq.on("hello world", function (message, cb) {
   // call callback when you are done
   // do not pass any errors, the emitter cannot handle it.
   cb();
@@ -58,6 +58,10 @@ Options:
 * `localEmitCheck`: a function to check if must fallback to "local" [MQEmitter](http://github.com/mcollina/mqemitter), defaults to `() => false`
 * `kafka`: options for [KafkaJS](https://kafka.js.org/) client (alternative to `client`)
 * `client`: an instance of [KafkaJS](https://kafka.js.org/) client (alternative to `kafka`)
+
+If neither `kafka` or `client` option are supplied, connection to `localhost:9092` will be attempted.
+
+**Supplying an external client it's recommended.**
 
 ### localEmitCheck(obj)
 
