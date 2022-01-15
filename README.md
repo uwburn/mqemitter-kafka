@@ -21,29 +21,29 @@ yarn add mqemitter-kafka
 ## Example
 
 ```js
-const MqemitterKafka = require('mqemitter-mongodb')
+const MqemitterKafka = require('mqemitter-mongodb');
 
-var mq = MqemitterKafka({
+const mq = MqemitterKafka({
   kafka: {
     brokers: ['localhost:9092']
   }
-})
+});
 
 const msg  = {
   topic: 'hello world',
   payload: 'or any other fields'
-}
+};
 
 mq.on('hello world', function (message, cb) {
   // call callback when you are done
   // do not pass any errors, the emitter cannot handle it.
-  cb()
-})
+  cb();
+});
 
 // topic is mandatory
 mq.emit(msg, function () {
   // emitter will never return an error
-})
+});
 ```
 
 ## API
