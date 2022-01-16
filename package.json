@@ -1,6 +1,6 @@
 {
   "name": "mqemitter-kafka",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kafka based MQEmitter",
   "main": "mqemitter-kafka.js",
   "repository": {
