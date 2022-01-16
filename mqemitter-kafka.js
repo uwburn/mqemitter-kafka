@@ -88,7 +88,7 @@ inherits(MQEmitterKafka, MQEmitter);
 
 MQEmitterKafka.prototype._write = async function(obj, cb) {
   try {
-    if (this._opts.localCheck(obj)) {
+    if (this._opts.localEmitCheck(obj)) {
       oldEmit.call(this, obj, cb);
     }
     else {
