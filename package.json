@@ -3,6 +3,9 @@
   "version": "0.1.1",
   "description": "Kafka based MQEmitter",
   "main": "mqemitter-kafka.js",
+  "scripts": {
+    "test": "tape test.js | faucet"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/uwburn/mqemitter-kafka.git"
@@ -13,7 +16,9 @@
     "node": ">=10.13.0"
   },
   "devDependencies": {
-    "eslint": "^8.6.0"
+    "eslint": "^8.6.0",
+    "faucet": "^0.0.1",
+    "tape": "^5.5.0"
   },
   "dependencies": {
     "inherits": "^2.0.4",
