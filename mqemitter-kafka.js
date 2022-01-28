@@ -24,6 +24,7 @@ function MQEmitterKafka(opts) {
   opts = opts || {};
   opts.topic = opts.topic || "mqemitter";
   opts.localEmitCheck = opts.localEmitCheck || falsy;
+  opts.delayClose = opts.delayClose || 100;
 
   this.status = new EE();
   this.status.setMaxListeners(0);
@@ -31,40 +32,36 @@ function MQEmitterKafka(opts) {
 
   this._opts = opts;
 
-  let that = this;
-
   if (opts.client) {
-    that._kafka = opts.client;
+    this._kafka = opts.client;
   }
   else {
     let defaultOpts = { clientId: id, brokers: ["localhost:9092"] };
-    let kafkaOpts = that._opts.kafka ? Object.assign(defaultOpts, that._opts.kafka) : defaultOpts;
+    let kafkaOpts = this._opts.kafka ? Object.assign(defaultOpts, this._opts.kafka) : defaultOpts;
 
-    that._kafka = new Kafka(kafkaOpts);
-  }
-  setImmediate(waitStartup);
-
-  this._started = false;
-
-  async function waitStartup() {
-    that._producer = that._kafka.producer();
-    await that._producer.connect();
-
-    that._consumer = that._kafka.consumer({ groupId: id });
-    await that._consumer.connect();
-
-    start();
+    this._kafka = new Kafka(kafkaOpts);
   }
 
-  this._waiting = new Map();
-  this._queue = [];
-  this._executingBulk = false;
+  (async () => {
+    this._started = false;
 
-  async function start() {
-    await that._consumer.subscribe({ topic: that._opts.topic });
+    this._producer = this._kafka.producer();
+    await this._producer.connect();
 
-    await that._consumer.run({
+    this._consumer = this._kafka.consumer({
+      groupId: id
+    });
+
+    await this._consumer.connect();
+
+    await this._consumer.subscribe({ topic: this._opts.topic });
+
+    await this._consumer.run({
       eachMessage: async (payload) => {
+        if (this._closed) {
+          return;
+        }
+
         let msg = JSON.parse(payload.message.value);
 
         let obj = msg.obj;
@@ -72,14 +69,16 @@ function MQEmitterKafka(opts) {
           obj.payload = Buffer.from(obj.payload, "base64");
         }
 
-        oldEmit.call(that, obj);
+        oldEmit.call(this, obj);
       }
     });
 
-    that._started = true;
+    this._started = true;
 
-    that.status.emit("started");
-  }
+    this.status.emit("started");
+  })();
+
+  this._queue = [];
 
   MQEmitter.call(this, opts);
 }
@@ -134,9 +133,74 @@ MQEmitterKafka.prototype._write = async function(obj, cb) {
   }
 };
 
+MQEmitterKafka.prototype._produce = async function() {
+  if (!this._producing && this._queue.length > 0) {
+    this._producing = true;
+
+    let length = this._queue.length;
+    let messages = [];
+
+    for (let i = 0; i < length; ++i) {
+      let obj = this._queue[i].obj;
+
+      if (this._opts.localEmitCheck(obj))
+        continue;
+
+      let payload = obj.payload;
+      let payloadType = "JSON";
+
+      let cpy;
+      if (Buffer.isBuffer(payload)) {
+        payload = payload.toString("base64");
+        payloadType = "BUFFER";
+
+        cpy = Object.assign({}, obj);
+        cpy.payload = payload;
+      }
+      else {
+        cpy = obj;
+      }
+
+      messages.push({
+        key: obj.topic,
+        value: JSON.stringify({
+          payloadType,
+          obj: cpy
+        })
+      });
+    }
+
+    try {
+      await this._producer.send({
+        topic: this._opts.topic,
+        messages
+      });
+
+      let dequeued = this._queue.splice(0, length);
+      for (let d of dequeued) {
+        if (d.cb) {
+          d.cb();
+        }
+      }
+    }
+    catch (err) {
+      this.status.emit("error", err);
+
+      let dequeued = this._queue.splice(0, length);
+      for (let d of dequeued) {
+        if (d.cb) {
+          d.cb(err);
+        }
+      }
+    }
+
+    this._producing = false;
+    this._produce();
+  }
+};
+
 MQEmitterKafka.prototype.emit = function(obj, cb) {
   if (!this.closed && !this._started) {
-    // actively poll if Kafka is ready
     this.status.once("started", this.emit.bind(this, obj, cb));
     return this;
   }
@@ -147,7 +211,8 @@ MQEmitterKafka.prototype.emit = function(obj, cb) {
     }
   }
   else {
-    this._write(obj, cb);
+    this._queue.push({ obj, cb });
+    this._produce();
   }
 
   return this;
