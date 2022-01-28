@@ -161,26 +161,18 @@ MQEmitterKafka.prototype.close = function(cb) {
   }
 
   if (!this._started) {
-    this.status.once("stream", this.close.bind(this, cb));
+    this.status.once("started", this.close.bind(this, cb));
     return;
   }
 
-  const that = this;
-  (async function() {
-    await that._producer.disconnect();
-    await that._consumer.disconnect();
+  setTimeout(async () => {
+    await this._consumer.disconnect();
+    await this._producer.disconnect();
 
-    that.closed = true;
+    this.closed = true;
 
-    MQEmitter.prototype.close.call(this, function() {
-      if (that._opts.db) {
-        cb();
-      }
-      else {
-        that._client.close(cb);
-      }
-    });
-  })();
+    cb();
+  }, this._opts.delayClose);
 
   return this;
 };
