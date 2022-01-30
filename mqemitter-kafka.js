@@ -36,8 +36,8 @@ function MQEmitterKafka(opts) {
     this._kafka = opts.client;
   }
   else {
-    let defaultOpts = { clientId: id, brokers: ["localhost:9092"] };
-    let kafkaOpts = this._opts.kafka ? Object.assign(defaultOpts, this._opts.kafka) : defaultOpts;
+    const defaultOpts = { clientId: id, brokers: ["localhost:9092"] };
+    const kafkaOpts = this._opts.kafka ? Object.assign(defaultOpts, this._opts.kafka) : defaultOpts;
 
     this._kafka = new Kafka(kafkaOpts);
   }
@@ -62,9 +62,9 @@ function MQEmitterKafka(opts) {
           return;
         }
 
-        let msg = JSON.parse(payload.message.value);
+        const msg = JSON.parse(payload.message.value);
 
-        let obj = msg.obj;
+        const obj = msg.obj;
         if (msg.payloadType == "BUFFER") {
           obj.payload = Buffer.from(obj.payload, "base64");
         }
@@ -174,9 +174,8 @@ MQEmitterKafka.prototype.emit = function(obj, cb) {
   }
 
   if (this.closed) {
-    let err = new Error("MQEmitterKafka is closed");
     if (cb) {
-      cb(err);
+      cb(new Error("MQEmitterKafka is closed"));
     }
   }
   else {
