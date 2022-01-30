@@ -142,7 +142,7 @@ MQEmitterKafka.prototype._clearQueue = function(length, err) {
   }
 };
 
-MQEmitterKafka.prototype._produce = async function() {
+MQEmitterKafka.prototype._processQueue = async function() {
   if (this._producing || this._queue.length <= 0) {
     return;
   }
@@ -197,7 +197,7 @@ MQEmitterKafka.prototype._produce = async function() {
   }
 
   this._producing = false;
-  this._produce();
+  this._processQueue();
 };
 
 MQEmitterKafka.prototype.emit = function(obj, cb) {
@@ -214,7 +214,7 @@ MQEmitterKafka.prototype.emit = function(obj, cb) {
   }
   else {
     this._queue.push({ obj, cb });
-    this._produce();
+    this._processQueue();
   }
 
   return this;
