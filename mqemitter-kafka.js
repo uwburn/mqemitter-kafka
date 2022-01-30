@@ -24,7 +24,7 @@ function MQEmitterKafka(opts) {
   opts = opts || {};
   opts.topic = opts.topic || "mqemitter";
   opts.localEmitCheck = opts.localEmitCheck || falsy;
-  opts.delayClose = opts.delayClose || 100;
+  opts.closeDelay = opts.closeDelay || 100;
 
   this.status = new EE();
   this.status.setMaxListeners(0);
@@ -237,7 +237,7 @@ MQEmitterKafka.prototype.close = function(cb) {
     this.closed = true;
 
     cb();
-  }, this._opts.delayClose);
+  }, this._opts.closeDelay);
 
   return this;
 };
