@@ -1,6 +1,6 @@
 "use strict";
 
-const Kafka = require("kafkajs").Kafka;
+const { Partitioners, Kafka } = require("kafkajs");
 const inherits = require("inherits");
 const MQEmitter = require("mqemitter");
 const EE = require("events").EventEmitter;
@@ -45,7 +45,7 @@ function MQEmitterKafka(opts) {
   (async () => {
     this._started = false;
 
-    this._producer = this._kafka.producer();
+    this._producer = this._kafka.producer({ createPartitioner: Partitioners.JavaCompatiblePartitioner });
     await this._producer.connect();
 
     this._consumer = this._kafka.consumer({
