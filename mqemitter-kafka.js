@@ -134,69 +134,71 @@ MQEmitterKafka.prototype._write = async function(obj, cb) {
 };
 
 MQEmitterKafka.prototype._produce = async function() {
-  if (!this._producing && this._queue.length > 0) {
-    this._producing = true;
-
-    let length = this._queue.length;
-    let messages = [];
-
-    for (let i = 0; i < length; ++i) {
-      let obj = this._queue[i].obj;
-
-      if (this._opts.localEmitCheck(obj))
-        continue;
-
-      let payload = obj.payload;
-      let payloadType = "JSON";
-
-      let cpy;
-      if (Buffer.isBuffer(payload)) {
-        payload = payload.toString("base64");
-        payloadType = "BUFFER";
-
-        cpy = Object.assign({}, obj);
-        cpy.payload = payload;
-      }
-      else {
-        cpy = obj;
-      }
-
-      messages.push({
-        key: obj.topic,
-        value: JSON.stringify({
-          payloadType,
-          obj: cpy
-        })
-      });
-    }
-
-    try {
-      await this._producer.send({
-        topic: this._opts.topic,
-        messages
-      });
-
-      let dequeued = this._queue.splice(0, length);
-      for (let d of dequeued) {
-        if (d.cb) {
-          d.cb();
-        }
-      }
-    }
-    catch (err) {
-      this.status.emit("error", err);
-
-      let dequeued = this._queue.splice(0, length);
-      for (let d of dequeued) {
-        if (d.cb) {
-          d.cb(err);
-        }
-      }
-    }
-
-    this._producing = false;
-    this._produce();
+  if (this._producing || this._queue.length <= 0) {
+    return;
   }
+
+  this._producing = true;
+
+  let length = this._queue.length;
+  let messages = [];
+
+  for (let i = 0; i < length; ++i) {
+    let obj = this._queue[i].obj;
+
+    if (this._opts.localEmitCheck(obj))
+      continue;
+
+    let payload = obj.payload;
+    let payloadType = "JSON";
+
+    let cpy;
+    if (Buffer.isBuffer(payload)) {
+      payload = payload.toString("base64");
+      payloadType = "BUFFER";
+
+      cpy = Object.assign({}, obj);
+      cpy.payload = payload;
+    }
+    else {
+      cpy = obj;
+    }
+
+    messages.push({
+      key: obj.topic,
+      value: JSON.stringify({
+        payloadType,
+        obj: cpy
+      })
+    });
+  }
+
+  try {
+    await this._producer.send({
+      topic: this._opts.topic,
+      messages
+    });
+
+    let dequeued = this._queue.splice(0, length);
+    for (let d of dequeued) {
+      if (d.cb) {
+        d.cb();
+      }
+    }
+  }
+  catch (err) {
+    this.status.emit("error", err);
+
+    let dequeued = this._queue.splice(0, length);
+    for (let d of dequeued) {
+      if (d.cb) {
+        d.cb(err);
+      }
+    }
+  }
+
+  this._producing = false;
+  this._produce();
 };
 
 MQEmitterKafka.prototype.emit = function(obj, cb) {
