@@ -133,6 +133,15 @@ MQEmitterKafka.prototype._write = async function(obj, cb) {
   }
 };
 
+MQEmitterKafka.prototype._clearQueue = function(length, err) {
+  let dequeued = this._queue.splice(0, length);
+  for (let d of dequeued) {
+    if (d.cb) {
+      d.cb(err);
+    }
+  }
+};
+
 MQEmitterKafka.prototype._produce = async function() {
   if (this._producing || this._queue.length <= 0) {
     return;
@@ -179,22 +188,12 @@ MQEmitterKafka.prototype._produce = async function() {
       messages
     });
 
-    let dequeued = this._queue.splice(0, length);
-    for (let d of dequeued) {
-      if (d.cb) {
-        d.cb();
-      }
-    }
+    this._clearQueue(length, null);
   }
   catch (err) {
     this.status.emit("error", err);
 
-    let dequeued = this._queue.splice(0, length);
-    for (let d of dequeued) {
-      if (d.cb) {
-        d.cb(err);
-      }
-    }
+    this._clearQueue(length, err);
   }
 
   this._producing = false;
@@ -206,7 +205,8 @@ MQEmitterKafka.prototype.emit = function(obj, cb) {
     this.status.once("started", this.emit.bind(this, obj, cb));
     return this;
   }
-  else if (this.closed) {
+
+  if (this.closed) {
     let err = new Error("MQEmitterKafka is closed");
     if (cb) {
       cb(err);
