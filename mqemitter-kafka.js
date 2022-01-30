@@ -85,62 +85,38 @@ function MQEmitterKafka(opts) {
 
 inherits(MQEmitterKafka, MQEmitter);
 
-MQEmitterKafka.prototype._write = async function(obj, cb) {
-  try {
-    if (this._opts.localEmitCheck(obj)) {
-      oldEmit.call(this, obj, cb);
-    }
-    else {
-      let payload = obj.payload;
-      let payloadType = "JSON";
-
-      let cpy;
-      if (Buffer.isBuffer(payload)) {
-        payload = payload.toString("base64");
-        payloadType = "BUFFER";
-
-        cpy = Object.assign({}, obj);
-        cpy.payload = payload;
-      }
-      else {
-        cpy = obj;
-      }
-
-      await this._producer.send({
-        topic: this._opts.topic,
-        messages: [
-          {
-            key: obj.topic,
-            value: JSON.stringify({
-              payloadType,
-              obj: cpy
-            })
-          }
-        ]
-      });
-
-      if (cb) {
-        cb();
-      }
-    }
-  }
-  catch (err) {
-    this.status.emit("error", err);
-
-    if (cb) {
-      cb(err);
-    }
-  }
-};
-
-MQEmitterKafka.prototype._clearQueue = function(length, err) {
-  let dequeued = this._queue.splice(0, length);
-  for (let d of dequeued) {
+function invokeCallbacks(queue, err) {
+  for (const d of queue) {
     if (d.cb) {
       d.cb(err);
     }
   }
-};
+}
+
+function buildKafkaMessage(obj) {
+  let payload = obj.payload;
+  let payloadType = "JSON";
+
+  let cpy;
+  if (Buffer.isBuffer(payload)) {
+    payload = payload.toString("base64");
+    payloadType = "BUFFER";
+
+    cpy = Object.assign({}, obj);
+    cpy.payload = payload;
+  }
+  else {
+    cpy = obj;
+  }
+
+  return {
+    key: obj.topic,
+    value: JSON.stringify({
+      payloadType,
+      obj: cpy
+    })
+  };
+}
 
 MQEmitterKafka.prototype._processQueue = async function() {
   if (this._producing || this._queue.length <= 0) {
@@ -149,52 +125,43 @@ MQEmitterKafka.prototype._processQueue = async function() {
 
   this._producing = true;
 
-  let length = this._queue.length;
-  let messages = [];
+  const length = this._queue.length;
+  const kafkaMessages = [];
+  const localMessages = [];
 
   for (let i = 0; i < length; ++i) {
-    let obj = this._queue[i].obj;
+    const e = this._queue[i];
 
-    if (this._opts.localEmitCheck(obj))
-      continue;
-
-    let payload = obj.payload;
-    let payloadType = "JSON";
-
-    let cpy;
-    if (Buffer.isBuffer(payload)) {
-      payload = payload.toString("base64");
-      payloadType = "BUFFER";
-
-      cpy = Object.assign({}, obj);
-      cpy.payload = payload;
+    if (this._opts.localEmitCheck(e.obj)) {
+      localMessages.push(e);
     }
     else {
-      cpy = obj;
+      e.kafkaMessage = buildKafkaMessage(e.obj);
+      kafkaMessages.push(e);
     }
-
-    messages.push({
-      key: obj.topic,
-      value: JSON.stringify({
-        payloadType,
-        obj: cpy
-      })
-    });
   }
 
-  try {
-    await this._producer.send({
-      topic: this._opts.topic,
-      messages
-    });
+  if (kafkaMessages.length > 0) {
+    try {
+      await this._producer.send({
+        topic: this._opts.topic,
+        messages: kafkaMessages.map(e => e.kafkaMessage)
+      });
 
-    this._clearQueue(length, null);
-  }
-  catch (err) {
-    this.status.emit("error", err);
+      invokeCallbacks(kafkaMessages, null);
+    }
+    catch (err) {
+      this.status.emit("error", err);
 
-    this._clearQueue(length, err);
+      invokeCallbacks(kafkaMessages, err);
+    }
   }
+
+  for (const e of localMessages) {
+    oldEmit.call(this, e.obj, e.cb);
+  }
+
+  this._queue.splice(0, length);
 
   this._producing = false;
   this._processQueue();
