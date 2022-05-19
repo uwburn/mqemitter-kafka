@@ -13,7 +13,7 @@
   "author": "Michele Tibaldi <tiboburn@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=10.13.0"
+    "node": ">=14.0.0"
   },
   "devDependencies": {
     "eslint": "^8.6.0",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "inherits": "^2.0.4",
-    "kafkajs": "^1.15.0",
+    "kafkajs": "^2.0.0",
     "mqemitter": "^4.5.0",
     "uuid": "^8.3.2"
   }

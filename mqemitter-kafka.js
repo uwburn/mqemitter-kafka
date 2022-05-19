@@ -45,7 +45,7 @@ function MQEmitterKafka(opts) {
   (async () => {
     this._started = false;
 
-    this._producer = this._kafka.producer({ createPartitioner: Partitioners.JavaCompatiblePartitioner });
+    this._producer = this._kafka.producer({ createPartitioner: Partitioners.DefaultPartitioner });
     await this._producer.connect();
 
     this._consumer = this._kafka.consumer({
