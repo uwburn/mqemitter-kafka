@@ -4,7 +4,10 @@
   "description": "Kafka based MQEmitter",
   "main": "mqemitter-kafka.js",
   "scripts": {
-    "test": "tape test.js | faucet"
+    "unit": "node --test --test-timeout=300000 test.js",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "test": "npm run lint && npm run unit"
   },
   "repository": {
     "type": "git",
@@ -16,14 +19,12 @@
     "node": ">=14.0.0"
   },
   "devDependencies": {
-    "eslint": "^8.6.0",
-    "faucet": "^0.0.1",
-    "tape": "^5.5.0"
+    "eslint": "^8.6.0"
   },
   "dependencies": {
     "inherits": "^2.0.4",
     "kafkajs": "^2.2.0",
-    "mqemitter": "^4.5.0",
+    "mqemitter": "^7.0.0",
     "uuid": "^8.3.2"
   }
 }
