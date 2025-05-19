@@ -58,6 +58,8 @@ Options:
 * `localEmitCheck`: a function to check if must fallback to "local" [MQEmitter](http://github.com/mcollina/mqemitter), defaults to `() => false`
 * `kafka`: options for [KafkaJS](https://kafka.js.org/) client (alternative to `client`)
 * `client`: an instance of [KafkaJS](https://kafka.js.org/) client (alternative to `kafka`)
+* `startDelay`: amount of milliseconds to wait after producer and consumer have completed startup before notfying started condition
+* `closeDelay`: amount of milliseconds to wait before disconnecting producer and consumer when calling close method
 
 If neither `kafka` or `client` option are supplied, connection to `localhost:9092` will be attempted.
 
