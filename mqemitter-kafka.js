@@ -52,6 +52,16 @@ function MQEmitterKafka(opts) {
       groupId: id
     });
 
+    const admin = this._kafka.admin();
+
+    await admin.connect();
+
+    await admin.createTopics({
+      topics: [{ topic: this._opts.topic }]
+    });
+
+    await admin.disconnect();
+
     await this._consumer.connect();
 
     await this._consumer.subscribe({ topic: this._opts.topic });
