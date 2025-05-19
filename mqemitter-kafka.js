@@ -14,6 +14,12 @@ function falsy() {
   return false;
 }
 
+function sleep(time) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, time);
+  });
+}
+
 function MQEmitterKafka(opts) {
   if (!(this instanceof MQEmitterKafka)) {
     return new MQEmitterKafka(opts);
@@ -24,6 +30,7 @@ function MQEmitterKafka(opts) {
   opts = opts || {};
   opts.topic = opts.topic || "mqemitter";
   opts.localEmitCheck = opts.localEmitCheck || falsy;
+  opts.startDelay = opts.startDelay || 100;
   opts.closeDelay = opts.closeDelay || 100;
 
   this.status = new EE();
@@ -82,6 +89,8 @@ function MQEmitterKafka(opts) {
         oldEmit.call(this, obj);
       }
     });
+
+    await sleep(this._opts.startDelay);
 
     this._started = true;
 
